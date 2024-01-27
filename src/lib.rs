@@ -1,31 +1,28 @@
+use pdfium_render::prelude::*;
 use std::{
-    env::temp_dir,
+    env,
     ffi::OsStr,
-    fmt::{self, Debug},
-    fs::{create_dir_all, File},
-    io,
+    fmt, fs, io,
     path::{Path, PathBuf},
 };
 
 const TMP_DIR: &str = "label-fixer";
 
+#[derive(thiserror::Error)]
 pub enum Error {
-    Io(io::Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+
+    #[error("{0}")]
     Other(&'static str),
+
+    #[error(transparent)]
+    Pdfium(#[from] PdfiumError),
 }
 
-impl Debug for Error {
+impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "{e}"),
-            Self::Other(e) => f.write_str(e),
-        }
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Self::Io(e)
+        fmt::Display::fmt(self, f)
     }
 }
 
@@ -34,27 +31,34 @@ pub fn fix_label(label_path: impl AsRef<Path>) -> Result<PathBuf, Error> {
     if label_path.extension() != Some(OsStr::new("pdf")) {
         return Err(Error::Other("must be a file ending in .pdf"));
     }
-    let mut label = File::open(label_path)?;
 
     let out_path = {
-        let mut out_path = temp_dir();
+        let mut out_path = env::temp_dir();
         out_path.push(TMP_DIR);
-        create_dir_all(&out_path)?;
+        fs::create_dir_all(&out_path)?;
         out_path.push(
             label_path
-                .file_name()
+                .file_stem()
                 .ok_or(Error::Other("could not parse file name"))?,
         );
+        out_path.set_extension("png");
         out_path
     };
 
-    let mut out = File::options()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&out_path)?;
-
-    io::copy(&mut label, &mut out)?;
+    let pdfium = Pdfium::default();
+    let first_page = pdfium
+        .load_pdf_from_file(label_path, None)?
+        .pages()
+        .first()?;
+    let label = first_page
+        .objects()
+        .first()?
+        .as_image_object()
+        .ok_or(Error::Other("failed to find label"))?
+        .get_raw_image()?;
+    label
+        .save(&out_path)
+        .map_err(|_| Error::Other("failed to save label"))?;
 
     Ok(out_path)
 }
