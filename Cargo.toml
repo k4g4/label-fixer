@@ -2,10 +2,13 @@
 name = "label-fixer"
 version = "0.1.0"
 edition = "2021"
-default-run = "cli_fix"
 
 [dependencies]
+iced = { version = "0.10.0", features = ["canvas", "image"]}
+native-dialog = "0.7.0"
 pdfium-render = "0.8.17"
 printers = "2.0.0"
 thiserror = "1.0.56"
 
+[build-dependencies]
+winres = "0.1"
