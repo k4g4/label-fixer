@@ -2,7 +2,7 @@ use std::{
     env::temp_dir,
     ffi::OsStr,
     fmt::{self, Debug},
-    fs::{copy, create_dir_all},
+    fs::{create_dir_all, File},
     io,
     path::{Path, PathBuf},
 };
@@ -34,14 +34,27 @@ pub fn fix_label(label_path: impl AsRef<Path>) -> Result<PathBuf, Error> {
     if label_path.extension() != Some(OsStr::new("pdf")) {
         return Err(Error::Other("must be a file ending in .pdf"));
     }
-    let mut out_path = temp_dir();
-    create_dir_all(TMP_DIR)?;
-    out_path.push(TMP_DIR);
-    out_path.push(
-        label_path
-            .file_name()
-            .ok_or(Error::Other("could not parse file name"))?,
-    );
-    copy(label_path, &out_path)?;
+    let mut label = File::open(label_path)?;
+
+    let out_path = {
+        let mut out_path = temp_dir();
+        out_path.push(TMP_DIR);
+        create_dir_all(&out_path)?;
+        out_path.push(
+            label_path
+                .file_name()
+                .ok_or(Error::Other("could not parse file name"))?,
+        );
+        out_path
+    };
+
+    let mut out = File::options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&out_path)?;
+
+    io::copy(&mut label, &mut out)?;
+
     Ok(out_path)
 }
