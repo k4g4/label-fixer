@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.10.0", features = ["canvas", "image"]}
+image = "0.24.8"
 native-dialog = "0.7.0"
 pdfium-render = "0.8.17"
 thiserror = "1.0.56"

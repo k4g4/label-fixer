@@ -1,3 +1,4 @@
+use image::imageops::{overlay, FilterType};
 use pdfium_render::prelude::*;
 use std::{
     env,
@@ -56,7 +57,22 @@ pub fn fix_label(label_path: impl AsRef<Path>) -> Result<PathBuf, Error> {
         .as_image_object()
         .ok_or(Error::Other("failed to find label"))?
         .get_raw_image()?;
-    label
+
+    let mut out_image = label
+        .resize(
+            (label.width() as f32 * 1.1) as u32,
+            (label.height() as f32 * 1.1) as u32,
+            FilterType::Nearest,
+        )
+        .brighten(255);
+    overlay(
+        &mut out_image,
+        &label,
+        (label.width() as f32 * 0.05) as i64,
+        (label.height() as f32 * 0.05) as i64,
+    );
+
+    out_image
         .save(&out_path)
         .map_err(|_| Error::Other("failed to save label"))?;
 
