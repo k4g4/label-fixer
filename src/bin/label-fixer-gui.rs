@@ -1,25 +1,23 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, process};
 
 use iced::{
-    alignment::{self, Horizontal},
-    color, executor, mouse,
+    alignment, color, executor, mouse,
     theme::{self, Palette},
     widget::{
         self,
         canvas::{self, Frame, Geometry, Program},
-        column, horizontal_space, image, row, text, vertical_space, Button, Canvas,
+        column, horizontal_space, image, row, Button, Canvas,
     },
-    window, Alignment, Application, Background, Color, Command, Element, Length, Rectangle,
-    Renderer, Settings, Theme, Vector,
+    window, Application, Background, Color, Command, Element, Length, Rectangle, Renderer,
+    Settings, Theme, Vector,
 };
 use label_fixer::fix_label;
 
 const SIZE: (u32, u32) = (600, 600);
 const MIN_SIZE: (u32, u32) = (200, 400);
 const PRINTER_EMOJI: &str = "🖨️";
-const SUCCESS_EMOJI: &str = "✅";
 const PRINTER_ICON: &[u8] = include_bytes!("../../printer.ico");
 
 fn main() -> iced::Result {
@@ -36,22 +34,9 @@ fn main() -> iced::Result {
 }
 
 #[derive(Debug, Clone)]
-struct Printer(printers::printer::Printer);
-
-impl PartialEq for Printer {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.name == other.0.name
-    }
-}
-
-impl Eq for Printer {}
-
-#[derive(Debug, Clone)]
 enum Message {
     Load,
     Print(PathBuf),
-    PrinterSelected(Printer, PathBuf),
-    Return(PathBuf),
 }
 
 fn error_dialog(text: &str) {
@@ -67,8 +52,6 @@ enum App {
     #[default]
     Empty,
     Loaded(image::Handle, PathBuf),
-    Printers(Vec<Printer>, PathBuf),
-    Success(Printer),
 }
 
 impl App {
@@ -112,34 +95,18 @@ impl Application for App {
             }
 
             Message::Print(out_path) => {
-                *self = Self::Printers(
-                    printers::get_printers().into_iter().map(Printer).collect(),
-                    out_path,
-                );
-                Command::none()
-            }
-
-            Message::PrinterSelected(printer, out_path) => {
-                println!("{}", out_path.to_str().unwrap());
-                *self = match printer.0.print(&std::fs::read(&out_path).unwrap(), None) {
-                    Ok(true) => Self::Success(printer),
-                    Ok(false) => {
-                        error_dialog(&format!("{} returned 'false'", printer.0.name));
-                        Self::loaded(out_path)
-                    }
-                    Err(error) => {
-                        error_dialog(&format!(
-                            "Error while printing to {}: '{error}'",
-                            printer.0.name
-                        ));
-                        Self::loaded(out_path)
-                    }
+                *self = if let Err(error) = process::Command::new("powershell")
+                    .arg(&format!(
+                        "start -filepath {} -verb print; sleep -s 30;",
+                        out_path.display()
+                    ))
+                    .spawn()
+                {
+                    error_dialog(&error.to_string());
+                    Self::loaded(out_path)
+                } else {
+                    Self::loaded(out_path)
                 };
-                Command::none()
-            }
-
-            Message::Return(out_path) => {
-                *self = Self::loaded(out_path);
                 Command::none()
             }
         }
@@ -216,61 +183,6 @@ impl Application for App {
                         .width(Length::Fill),
                     sep,
                     bottom_bar
-                ]
-                .into()
-            }
-
-            Self::Printers(printers, out_path) => {
-                let buttons = {
-                    let mut buttons = vec![vertical_space(30).into()];
-                    for printer in printers {
-                        buttons.push(
-                            pink_button(
-                                printer.0.name.as_str(),
-                                Message::PrinterSelected(printer.clone(), out_path.clone()),
-                            )
-                            .width(Length::Fill)
-                            .into(),
-                        );
-                        buttons.push(vertical_space(30).into());
-                    }
-                    buttons.push(pink_button("Return", Message::Return(out_path.clone())).into());
-                    buttons
-                };
-
-                row![
-                    horizontal_space(Length::FillPortion(1)),
-                    column(buttons)
-                        .align_items(Alignment::Center)
-                        .width(Length::FillPortion(2)),
-                    horizontal_space(Length::FillPortion(1)),
-                ]
-                .into()
-            }
-
-            Self::Success(printer) => {
-                let top_message = row![
-                    horizontal_space(Length::Fill),
-                    text(format!("Printed to {} successfully!", printer.0.name))
-                        .horizontal_alignment(Horizontal::Center)
-                        .size(30),
-                    horizontal_space(Length::Fill),
-                ];
-
-                let bottom_bar = row![
-                    horizontal_space(Length::Fill),
-                    open_button,
-                    horizontal_space(Length::Fill)
-                ]
-                .padding(20);
-
-                column![
-                    top_message,
-                    Canvas::new(EmojiDisplayer(SUCCESS_EMOJI))
-                        .height(Length::Fill)
-                        .width(Length::Fill),
-                    sep,
-                    bottom_bar,
                 ]
                 .into()
             }
