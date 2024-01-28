@@ -2,7 +2,7 @@ use label_fixer::*;
 use std::env::args;
 
 fn main() -> Result<(), Error> {
-    let Some(path) = args().skip(1).next() else {
+    let Some(path) = args().nth(1) else {
         return Err(Error::Other("must provide a file path"));
     };
 
